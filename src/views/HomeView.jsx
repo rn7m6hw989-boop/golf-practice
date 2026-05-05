@@ -4,6 +4,7 @@ import { Target, Trophy, Flag, ChevronRight } from "lucide-react";
 import { T } from "../theme.js";
 import { DRILLS } from "../drills.js";
 import { Card } from "../components/Card.jsx";
+import { PageTitle } from "../components/PageTitle.jsx";
 import { SectionLabel } from "../components/SectionLabel.jsx";
 import { BenchmarkChart } from "../components/BenchmarkChart.jsx";
 import { getBenchmarkMatch, getSessionDisplayMetric, formatDate } from "../helpers.js";
