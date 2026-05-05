@@ -489,7 +489,7 @@ export function SummaryView({ session, allSessions, onDone, onViewBenchmarks }) 
       <div
         style={{
           position: "fixed",
-          bottom: 64,
+          bottom: "calc(64px + env(safe-area-inset-bottom))",
           left: 0,
           right: 0,
           padding: "12px 16px 14px",

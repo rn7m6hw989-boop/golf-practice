@@ -165,7 +165,8 @@ export default function App() {
         minHeight: "100vh",
         background: T.bg,
         color: T.text,
-        paddingBottom: showNav ? 64 : 0,
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: showNav ? "calc(64px + env(safe-area-inset-bottom))" : 0,
         fontFamily: "var(--font-sans)",
       }}
     >

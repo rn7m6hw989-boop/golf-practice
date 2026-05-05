@@ -96,7 +96,7 @@ export function SpiralSessionView({ drillId, onComplete, onCancel }) {
   };
 
   return (
-    <div style={{ padding: "1rem 0 1.5rem", minHeight: "calc(100vh - 4rem)" }}>
+    <div style={{ padding: "1rem 0 calc(1.5rem + env(safe-area-inset-bottom))", minHeight: "calc(100vh - 4rem)" }}>
       <style>{`
         @keyframes scorePop {
           0% { transform: scale(1); }

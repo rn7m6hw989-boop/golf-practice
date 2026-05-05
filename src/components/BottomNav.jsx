@@ -20,6 +20,7 @@ export function BottomNav({ currentTab, onChangeTab }) {
         background: T.surface,
         borderTop: `0.5px solid ${T.border}`,
         display: "flex",
+        paddingBottom: "env(safe-area-inset-bottom)",
         zIndex: 50,
       }}
     >
