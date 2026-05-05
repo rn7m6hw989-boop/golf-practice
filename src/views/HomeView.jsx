@@ -1,5 +1,5 @@
 // HomeView
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Target, Trophy, Flag, ChevronRight } from "lucide-react";
 import { T } from "../theme.js";
 import { DRILLS } from "../drills.js";

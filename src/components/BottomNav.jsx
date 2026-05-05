@@ -7,7 +7,7 @@ export function BottomNav({ currentTab, onChangeTab }) {
   const tabs = [
     { id: "home", label: "Home", icon: Home },
     { id: "drills", label: "Drills", icon: Target },
-    { id: "history", label: "History", icon: History },
+    { id: "history", label: "History", icon: HistoryIcon },
   ];
 
   return (
