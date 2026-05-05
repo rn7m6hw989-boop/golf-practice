@@ -1,6 +1,7 @@
 // ScoringSessionView
 import React, { useEffect, useState } from "react";
-import { Undo2, X } from "lucide-react";
+import { Undo2, X, Trophy, Flag } from "lucide-react";
+import { SectionLabel } from "../components/SectionLabel.jsx";
 import { T, getToneStyles } from "../theme.js";
 import { DRILLS } from "../drills.js";
 import { Card } from "../components/Card.jsx";

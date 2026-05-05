@@ -1,5 +1,6 @@
 // DrillDetailView
 import React from "react";
+import { ChevronRight } from "lucide-react";
 import { T } from "../theme.js";
 import { DRILLS } from "../drills.js";
 import { BackButton } from "../components/BackButton.jsx";

@@ -5,6 +5,7 @@ import { T } from "../theme.js";
 import { DRILLS } from "../drills.js";
 import { BackButton } from "../components/BackButton.jsx";
 import { Card } from "../components/Card.jsx";
+import { PageTitle } from "../components/PageTitle.jsx";
 import { SectionLabel } from "../components/SectionLabel.jsx";
 import { SkillSpectrum } from "../components/SkillSpectrum.jsx";
 import { getBenchmarkMatch, formatDateLong } from "../helpers.js";

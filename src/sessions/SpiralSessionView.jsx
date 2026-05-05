@@ -1,6 +1,7 @@
 // SpiralSessionView
 import React, { useEffect, useState } from "react";
-import { Undo2, X, Check, Circle, RotateCw } from "lucide-react";
+import { Undo2, X, Check, Circle, RotateCw, Trophy } from "lucide-react";
+import { SectionLabel } from "../components/SectionLabel.jsx";
 import { T } from "../theme.js";
 import { DRILLS } from "../drills.js";
 import { Card } from "../components/Card.jsx";
