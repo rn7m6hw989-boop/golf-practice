@@ -2,57 +2,69 @@
 import React, { useState, useEffect } from "react";
 import { T } from "./theme.js";
 import { storage } from "./storage.js";
-import { HomeView } from "./views/HomeView.jsx";
+import { GoalsView } from "./views/GoalsView.jsx";
 import { DrillsView } from "./views/DrillsView.jsx";
-import { HistoryView } from "./views/HistoryView.jsx";
+import { RoundsView } from "./views/RoundsView.jsx";
+import { StatsView } from "./views/StatsView.jsx";
 import { DrillDetailView } from "./views/DrillDetailView.jsx";
 import { BenchmarksView } from "./views/BenchmarksView.jsx";
 import { SessionDetailView } from "./views/SessionDetailView.jsx";
 import { SummaryView } from "./views/SummaryView.jsx";
+import { RoundSetupView } from "./views/RoundSetupView.jsx";
+import { RoundView } from "./views/RoundView.jsx";
 import { SessionView } from "./sessions/SessionView.jsx";
 import { BottomNav } from "./components/BottomNav.jsx";
 import { EndRoundModal } from "./components/EndRoundModal.jsx";
 
 export default function App() {
   const [sessions, setSessions] = useState([]);
+  const [rounds, setRounds] = useState([]);
   const [activeRound, setActiveRound] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentTab, setCurrentTab] = useState("home");
+  const [currentTab, setCurrentTab] = useState("goals");
   const [screen, setScreen] = useState({ name: "tab" });
 
+  // refreshKey is bumped whenever sessions/rounds change so child views
+  // (StatsView in particular) can re-fetch the activity feed.
+  const [refreshKey, setRefreshKey] = useState(0);
+
   // When a drill-start is gated by an active round, the requested drill is
-  // held here and the modal is shown. If the user confirms ending the round,
-  // we end the round and proceed with this drill.
+  // held here and the modal is shown.
   const [pendingDrillStart, setPendingDrillStart] = useState(null);
 
   useEffect(() => {
     (async () => {
-      const [allSessions, active] = await Promise.all([
+      const [allSessions, allRounds, active] = await Promise.all([
         storage.listSessions(),
+        storage.listRounds(),
         storage.getActiveRound(),
       ]);
       setSessions(allSessions);
+      setRounds(allRounds);
       setActiveRound(active);
       setLoading(false);
     })();
   }, []);
 
-  const refreshSessions = async () => {
-    const all = await storage.listSessions();
-    setSessions(all);
-  };
-
-  const refreshActiveRound = async () => {
-    const active = await storage.getActiveRound();
+  const refreshAll = async () => {
+    const [allSessions, allRounds, active] = await Promise.all([
+      storage.listSessions(),
+      storage.listRounds(),
+      storage.getActiveRound(),
+    ]);
+    setSessions(allSessions);
+    setRounds(allRounds);
     setActiveRound(active);
+    setRefreshKey((k) => k + 1);
   };
 
-  const handleOpenDrill = (drillId) => setScreen({ name: "drillDetail", drillId });
+  // ==========================================================================
+  // DRILL FLOWS
+  // ==========================================================================
 
-  // Drill-start chokepoint. If a round is in progress, prompt the user to
-  // end it first; otherwise proceed directly. Phase A: rounds can only be
-  // ended via this prompt (no round-creation UI yet, so any active round is
-  // historical from prior phases — but the gating still works).
+  const handleOpenDrill = (drillId) =>
+    setScreen({ name: "drillDetail", drillId });
+
   const handleStartDrill = (drillId) => {
     if (activeRound) {
       setPendingDrillStart(drillId);
@@ -61,12 +73,9 @@ export default function App() {
     setScreen({ name: "session", drillId });
   };
 
-  // From the gating modal: end the active round and then proceed with the
-  // pending drill. The round is moved to completed-rounds in whatever state
-  // it's in; the user can edit it later.
   const handleEndRoundAndStartDrill = async () => {
     await storage.completeActiveRound();
-    await refreshActiveRound();
+    await refreshAll();
     const drillId = pendingDrillStart;
     setPendingDrillStart(null);
     if (drillId) {
@@ -80,18 +89,18 @@ export default function App() {
 
   const handleSessionComplete = async (session) => {
     await storage.saveSession(session);
-    await refreshSessions();
+    await refreshAll();
     setScreen({ name: "summary", session });
   };
 
   const handleSessionCancel = () => {
     setScreen({ name: "tab" });
-    setCurrentTab("home");
+    setCurrentTab("drills");
   };
 
   const handleSummaryDone = () => {
     setScreen({ name: "tab" });
-    setCurrentTab("home");
+    setCurrentTab("drills");
   };
 
   const handleViewBenchmarks = (session) => {
@@ -110,9 +119,63 @@ export default function App() {
 
   const handleDeleteSession = async (session) => {
     await storage.deleteSession(session.drillId, session.id);
-    await refreshSessions();
+    await refreshAll();
     setScreen({ name: "tab" });
   };
+
+  // ==========================================================================
+  // ROUND FLOWS
+  // ==========================================================================
+
+  const handleStartRound = () => {
+    setScreen({ name: "roundSetup" });
+  };
+
+  const handleConfirmRoundSetup = async (setup) => {
+    const round = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+      date: setup.date,
+      course: setup.course,
+      tees: setup.tees,
+      pars: setup.pars,
+      holes: {},
+      shots: [],
+      status: "in-progress",
+      finishedAt: null,
+    };
+    await storage.setActiveRound(round);
+    await refreshAll();
+    setScreen({ name: "round", round });
+  };
+
+  const handleResumeRound = () => {
+    if (!activeRound) return;
+    setScreen({ name: "round", round: activeRound });
+  };
+
+  const handleExitRound = () => {
+    // Exiting keeps the round active. Returns the user to the Rounds tab.
+    setScreen({ name: "tab" });
+    setCurrentTab("rounds");
+  };
+
+  const handleEndRound = async () => {
+    await storage.completeActiveRound();
+    await refreshAll();
+    setScreen({ name: "tab" });
+    setCurrentTab("rounds");
+  };
+
+  const handleOpenRound = (roundId) => {
+    // Phase B1: round detail view doesn't exist yet. For now, opening a past
+    // round is a no-op. (Will be wired up in B5.)
+    console.log("Open round (not yet implemented):", roundId);
+  };
+
+  // ==========================================================================
+  // NAV
+  // ==========================================================================
 
   const handleChangeTab = (tabId) => {
     setCurrentTab(tabId);
@@ -136,6 +199,7 @@ export default function App() {
     );
   }
 
+  // Routes that aren't simple tabs override the bottom nav.
   let content;
   const showNav =
     screen.name === "tab" ||
@@ -185,20 +249,46 @@ export default function App() {
         onViewBenchmarks={() => handleViewBenchmarks(screen.session)}
       />
     );
+  } else if (screen.name === "roundSetup") {
+    content = (
+      <RoundSetupView
+        onCancel={() => {
+          setScreen({ name: "tab" });
+          setCurrentTab("rounds");
+        }}
+        onStart={handleConfirmRoundSetup}
+      />
+    );
+  } else if (screen.name === "round") {
+    content = (
+      <RoundView
+        round={activeRound || screen.round}
+        onEndRound={handleEndRound}
+        onExit={handleExitRound}
+      />
+    );
   } else {
-    if (currentTab === "home") {
-      content = (
-        <HomeView
-          sessions={sessions}
-          onOpenSession={handleOpenSession}
-          onChangeTab={handleChangeTab}
-        />
-      );
+    if (currentTab === "goals") {
+      content = <GoalsView onChangeTab={handleChangeTab} />;
     } else if (currentTab === "drills") {
       content = <DrillsView sessions={sessions} onOpenDrill={handleOpenDrill} />;
-    } else if (currentTab === "history") {
+    } else if (currentTab === "rounds") {
       content = (
-        <HistoryView sessions={sessions} onOpenSession={handleOpenSession} />
+        <RoundsView
+          rounds={rounds}
+          activeRound={activeRound}
+          onStartRound={handleStartRound}
+          onResumeRound={handleResumeRound}
+          onOpenRound={handleOpenRound}
+        />
+      );
+    } else if (currentTab === "stats") {
+      content = (
+        <StatsView
+          onOpenSession={handleOpenSession}
+          onOpenRound={handleOpenRound}
+          refreshKey={refreshKey}
+        />
       );
     }
   }
@@ -226,4 +316,3 @@ export default function App() {
     </div>
   );
 }
-

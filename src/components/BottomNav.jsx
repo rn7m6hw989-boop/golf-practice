@@ -1,13 +1,14 @@
 // BottomNav
 import React from "react";
-import { Home, Target, History as HistoryIcon } from "lucide-react";
+import { Trophy, Target, Flag, BarChart3 } from "lucide-react";
 import { T } from "../theme.js";
 
 export function BottomNav({ currentTab, onChangeTab }) {
   const tabs = [
-    { id: "home", label: "Home", icon: Home },
+    { id: "goals", label: "Goals", icon: Trophy },
     { id: "drills", label: "Drills", icon: Target },
-    { id: "history", label: "History", icon: HistoryIcon },
+    { id: "rounds", label: "Rounds", icon: Flag },
+    { id: "stats", label: "Stats", icon: BarChart3 },
   ];
 
   return (
