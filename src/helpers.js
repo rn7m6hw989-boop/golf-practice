@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { CATEGORIES, DRILLS } from "./drills.js";
+import { storage } from "./storage.js";
 
 export function getCategoryLabel(categoryId) {
   return CATEGORIES.find((c) => c.id === categoryId)?.label || categoryId;
@@ -188,4 +189,33 @@ export function formatDateLong(timestamp) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+// ============================================================================
+// ACTIVITY FEED — merges drill sessions and rounds into a single timestamp-
+// ordered list. Each entry is { type, data, timestamp } where type is
+// "drillSession" or "round". Used by the home screen recent-activity view
+// and the history tab. Computed at view time from both data sources; not
+// stored.
+// ============================================================================
+
+export async function getRecentActivity(limit = null) {
+  const [sessions, rounds] = await Promise.all([
+    storage.listSessions(),
+    storage.listRounds(),
+  ]);
+  const all = [
+    ...sessions.map((s) => ({
+      type: "drillSession",
+      data: s,
+      timestamp: s.timestamp,
+    })),
+    ...rounds.map((r) => ({
+      type: "round",
+      data: r,
+      timestamp: r.timestamp,
+    })),
+  ];
+  all.sort((a, b) => b.timestamp - a.timestamp);
+  return limit ? all.slice(0, limit) : all;
 }

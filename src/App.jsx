@@ -11,17 +11,28 @@ import { SessionDetailView } from "./views/SessionDetailView.jsx";
 import { SummaryView } from "./views/SummaryView.jsx";
 import { SessionView } from "./sessions/SessionView.jsx";
 import { BottomNav } from "./components/BottomNav.jsx";
+import { EndRoundModal } from "./components/EndRoundModal.jsx";
 
 export default function App() {
   const [sessions, setSessions] = useState([]);
+  const [activeRound, setActiveRound] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState("home");
   const [screen, setScreen] = useState({ name: "tab" });
 
+  // When a drill-start is gated by an active round, the requested drill is
+  // held here and the modal is shown. If the user confirms ending the round,
+  // we end the round and proceed with this drill.
+  const [pendingDrillStart, setPendingDrillStart] = useState(null);
+
   useEffect(() => {
     (async () => {
-      const all = await storage.listSessions();
-      setSessions(all);
+      const [allSessions, active] = await Promise.all([
+        storage.listSessions(),
+        storage.getActiveRound(),
+      ]);
+      setSessions(allSessions);
+      setActiveRound(active);
       setLoading(false);
     })();
   }, []);
@@ -31,8 +42,41 @@ export default function App() {
     setSessions(all);
   };
 
+  const refreshActiveRound = async () => {
+    const active = await storage.getActiveRound();
+    setActiveRound(active);
+  };
+
   const handleOpenDrill = (drillId) => setScreen({ name: "drillDetail", drillId });
-  const handleStartDrill = (drillId) => setScreen({ name: "session", drillId });
+
+  // Drill-start chokepoint. If a round is in progress, prompt the user to
+  // end it first; otherwise proceed directly. Phase A: rounds can only be
+  // ended via this prompt (no round-creation UI yet, so any active round is
+  // historical from prior phases — but the gating still works).
+  const handleStartDrill = (drillId) => {
+    if (activeRound) {
+      setPendingDrillStart(drillId);
+      return;
+    }
+    setScreen({ name: "session", drillId });
+  };
+
+  // From the gating modal: end the active round and then proceed with the
+  // pending drill. The round is moved to completed-rounds in whatever state
+  // it's in; the user can edit it later.
+  const handleEndRoundAndStartDrill = async () => {
+    await storage.completeActiveRound();
+    await refreshActiveRound();
+    const drillId = pendingDrillStart;
+    setPendingDrillStart(null);
+    if (drillId) {
+      setScreen({ name: "session", drillId });
+    }
+  };
+
+  const handleCancelPendingDrill = () => {
+    setPendingDrillStart(null);
+  };
 
   const handleSessionComplete = async (session) => {
     await storage.saveSession(session);
@@ -172,6 +216,13 @@ export default function App() {
     >
       <div style={{ padding: "0 16px" }}>{content}</div>
       {showNav && <BottomNav currentTab={currentTab} onChangeTab={handleChangeTab} />}
+      {pendingDrillStart && (
+        <EndRoundModal
+          activeRound={activeRound}
+          onConfirm={handleEndRoundAndStartDrill}
+          onCancel={handleCancelPendingDrill}
+        />
+      )}
     </div>
   );
 }
