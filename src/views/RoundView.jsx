@@ -1,22 +1,18 @@
-// RoundView — round-tracking screen with shot capture.
+// RoundView — round-tracking screen with shot capture (redesigned).
 //
-// Phase B2 includes:
-//   - Header showing course, current hole, par
-//   - Prev/next hole navigation (basic — full grid comes in B5)
-//   - Lie selector (Tee / Fairway / Rough / Sand / Recovery / Green)
-//   - Distance numpad with auto unit (yards / feet for green)
-//   - Penalty stroke counter
-//   - Add shot button
-//   - Shot list for current hole with tap-to-edit
-//   - Shot edit modal
-//   - Exit (returns to Rounds tab, round persists) and End round
+// Layout principles:
+//   - Status (course / hole / par / score-so-far) collapses into a compact
+//     header row, not a giant card.
+//   - The primary task (entering a shot: lie + distance + add) dominates.
+//   - The native numeric keypad is used instead of a custom in-screen numpad.
+//   - Penalty is hidden behind a progressive-disclosure link by default.
+//   - Hole navigation is a small footer row, not a top-of-screen card.
 //
 // Phase B3 will add the hole-finish modal (par/score/Tiger 5/notes).
-// Phase B5 will add the 18-hole grid overview.
+// Phase B5 will replace prev/next hole nav with the 18-hole grid overview.
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  Flag,
   X,
   Check,
   ChevronLeft,
@@ -24,7 +20,7 @@ import {
   Plus,
   Minus,
   Undo2,
-  Delete,
+  AlertTriangle,
 } from "lucide-react";
 import { T } from "../theme.js";
 import { Card } from "../components/Card.jsx";
@@ -37,16 +33,16 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
   const [pendingLie, setPendingLie] = useState(null);
   const [pendingDist, setPendingDist] = useState("");
   const [pendingPenalty, setPendingPenalty] = useState(0);
+  const [showPenalty, setShowPenalty] = useState(false);
   const [showConfirmEnd, setShowConfirmEnd] = useState(false);
   const [editingShot, setEditingShot] = useState(null);
 
-  // Local mirror of the round so we can update state immediately without
-  // waiting for storage to round-trip. The round prop is what we initialize
-  // from; subsequent updates persist to storage and notify the parent via
-  // onRoundChanged() so the parent can refresh.
+  const distInputRef = useRef(null);
+
+  // Local mirror of the round so updates are immediate. Persists to storage
+  // on every change.
   const [r, setR] = useState(round);
 
-  // If the parent passes us a different round (unusual), reset.
   useEffect(() => {
     setR(round);
   }, [round.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -56,9 +52,6 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
     .filter((s) => s.hole === currentHole)
     .sort((a, b) => a.shotNum - b.shotNum);
 
-  // Score-so-far for the current hole = number of shots + total penalty
-  // strokes. (This is the working in-hole score before the user formally
-  // closes the hole via the hole modal in B3.)
   const scoreSoFar =
     shotsThisHole.length +
     shotsThisHole.reduce((acc, s) => acc + (s.penalty || 0), 0);
@@ -69,8 +62,9 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
     onRoundChanged && onRoundChanged();
   };
 
+  const distNum = parseInt(pendingDist, 10);
   const canAddShot =
-    pendingLie !== null && pendingDist !== "" && parseInt(pendingDist, 10) > 0;
+    pendingLie !== null && !isNaN(distNum) && distNum > 0;
 
   const handleAddShot = async () => {
     if (!canAddShot) return;
@@ -78,7 +72,7 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
       hole: currentHole,
       shotNum: shotsThisHole.length + 1,
       lie: pendingLie,
-      dist: parseInt(pendingDist, 10),
+      dist: distNum,
       penalty: pendingPenalty,
     };
     const next = {
@@ -86,10 +80,11 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
       shots: [...(r.shots || []), newShot],
     };
     await persistRound(next);
-    // Clear inputs after a successful add — fresh state for the next shot.
     setPendingLie(null);
     setPendingDist("");
     setPendingPenalty(0);
+    setShowPenalty(false);
+    if (distInputRef.current) distInputRef.current.blur();
   };
 
   const handleUndoShot = async () => {
@@ -104,36 +99,13 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
     await persistRound(next);
   };
 
-  const handleNumpadDigit = (digit) => {
-    if (pendingDist.length >= 4) return;
-    const next = pendingDist === "0" ? digit : pendingDist + digit;
-    setPendingDist(next);
-  };
-
-  const handleNumpadBackspace = () => {
-    setPendingDist(pendingDist.slice(0, -1));
-  };
-
-  const handleNumpadClear = () => {
+  const goToHole = (h) => {
+    if (h < 1 || h > 18) return;
+    setCurrentHole(h);
+    setPendingLie(null);
     setPendingDist("");
-  };
-
-  const handlePrevHole = () => {
-    if (currentHole > 1) {
-      setCurrentHole(currentHole - 1);
-      setPendingLie(null);
-      setPendingDist("");
-      setPendingPenalty(0);
-    }
-  };
-
-  const handleNextHole = () => {
-    if (currentHole < 18) {
-      setCurrentHole(currentHole + 1);
-      setPendingLie(null);
-      setPendingDist("");
-      setPendingPenalty(0);
-    }
+    setPendingPenalty(0);
+    setShowPenalty(false);
   };
 
   const handleEditShot = (shot) => {
@@ -156,7 +128,6 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
 
   const handleDeleteEditedShot = async () => {
     if (!editingShot) return;
-    // Remove the shot, then renumber any subsequent shots in the same hole.
     const remaining = r.shots
       .filter(
         (s) => !(s.hole === editingShot.hole && s.shotNum === editingShot.shotNum),
@@ -175,26 +146,23 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
   const distanceUnit = pendingLie === "Green" ? "feet" : "yards";
 
   return (
-    <div style={{ padding: "1rem 0 1.5rem" }}>
-      {/* Top bar: Exit / status / End */}
+    <div style={{ padding: "0.75rem 0 1rem" }}>
+      {/* Top bar */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "1rem",
+          marginBottom: "0.75rem",
         }}
       >
-        <button
-          onClick={onExit}
-          style={topBarBtnStyle}
-        >
-          <X size={16} />
+        <button onClick={onExit} style={topBarBtnStyle}>
+          <X size={15} />
           Exit
         </button>
         <div
           style={{
-            fontSize: 11,
+            fontSize: 10,
             color: T.green,
             textTransform: "uppercase",
             letterSpacing: 1.2,
@@ -203,11 +171,8 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
         >
           Round in progress
         </div>
-        <button
-          onClick={() => setShowConfirmEnd(true)}
-          style={topBarBtnStyle}
-        >
-          <Check size={16} />
+        <button onClick={() => setShowConfirmEnd(true)} style={topBarBtnStyle}>
+          <Check size={15} />
           End
         </button>
       </div>
@@ -255,269 +220,238 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
         </Card>
       )}
 
-      {/* Course header */}
-      <div
-        style={{
-          fontSize: 12,
-          color: T.textFaint,
-          marginBottom: 4,
-          paddingLeft: 2,
-        }}
-      >
-        <Flag
-          size={11}
-          style={{ verticalAlign: "middle", marginRight: 6 }}
-        />
-        {r.course || "Untitled course"}
-        {r.tees && ` · ${r.tees}`}
-      </div>
-
-      {/* Hole navigation header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: T.surface,
-          border: `0.5px solid ${T.border}`,
-          borderRadius: "var(--border-radius-lg)",
-          padding: "12px 8px",
-          marginBottom: "1rem",
-        }}
-      >
-        <button
-          onClick={handlePrevHole}
-          disabled={currentHole === 1}
+      {/* Compact info bar — course + hole status in two tight lines */}
+      <div style={{ marginBottom: "1.25rem", paddingLeft: 2 }}>
+        <div
           style={{
-            ...holeNavBtnStyle,
-            opacity: currentHole === 1 ? 0.3 : 1,
-            cursor: currentHole === 1 ? "default" : "pointer",
+            fontSize: 12,
+            color: T.textFaint,
+            marginBottom: 4,
           }}
         >
-          <ChevronLeft size={20} />
-        </button>
-        <div style={{ textAlign: "center", flex: 1 }}>
-          <div style={{ fontSize: 11, color: T.textFaint, letterSpacing: 0.5 }}>
-            Hole
-          </div>
-          <div
+          {r.course || "Untitled course"}
+          {r.tees && ` · ${r.tees}`}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 10,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          <span
             style={{
-              fontSize: 26,
+              fontSize: 11,
+              color: T.textFaint,
+              textTransform: "uppercase",
+              letterSpacing: 1,
+              fontWeight: 500,
+            }}
+          >
+            Hole
+          </span>
+          <span
+            style={{
+              fontSize: 22,
               fontWeight: 600,
-              lineHeight: 1.1,
-              fontVariantNumeric: "tabular-nums",
+              color: T.text,
+              lineHeight: 1,
             }}
           >
             {currentHole}
-          </div>
-          <div
+          </span>
+          <span
             style={{
-              fontSize: 12,
+              fontSize: 13,
               color: T.textDim,
-              marginTop: 2,
-              fontVariantNumeric: "tabular-nums",
             }}
           >
             Par {par || "—"}
             {scoreSoFar > 0 && ` · ${scoreSoFar} so far`}
-          </div>
+          </span>
         </div>
-        <button
-          onClick={handleNextHole}
-          disabled={currentHole === 18}
-          style={{
-            ...holeNavBtnStyle,
-            opacity: currentHole === 18 ? 0.3 : 1,
-            cursor: currentHole === 18 ? "default" : "pointer",
-          }}
-        >
-          <ChevronRight size={20} />
-        </button>
       </div>
 
-      {/* Lie selector */}
-      <div
-        style={{
-          fontSize: 11,
-          color: T.textFaint,
-          textTransform: "uppercase",
-          letterSpacing: 1,
-          fontWeight: 500,
-          marginBottom: 8,
-          paddingLeft: 4,
-        }}
-      >
-        Lie
-      </div>
+      {/* Lie chips — single horizontal row */}
+      <SectionLabel>Lie</SectionLabel>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 6,
+          gridTemplateColumns: "repeat(6, 1fr)",
+          gap: 5,
           marginBottom: "1rem",
         }}
       >
         {LIES.map((lie) => {
           const selected = pendingLie === lie;
+          // Use shorter labels at narrow widths.
+          const label = lie === "Recovery" ? "Rec" : lie;
           return (
             <button
               key={lie}
               onClick={() => setPendingLie(lie)}
               style={{
-                padding: "12px 4px",
-                fontSize: 14,
+                padding: "10px 0",
+                fontSize: 12,
                 fontWeight: 500,
                 background: selected ? T.green : T.surface,
                 color: selected ? T.greenInk : T.text,
                 border: `0.5px solid ${selected ? T.green : T.borderStrong}`,
                 borderRadius: "var(--border-radius-md)",
                 cursor: "pointer",
+                whiteSpace: "nowrap",
               }}
             >
-              {lie}
+              {label}
             </button>
           );
         })}
       </div>
 
-      {/* Distance display + numpad */}
-      <div
-        style={{
-          fontSize: 11,
-          color: T.textFaint,
-          textTransform: "uppercase",
-          letterSpacing: 1,
-          fontWeight: 500,
-          marginBottom: 8,
-          paddingLeft: 4,
-        }}
-      >
-        Distance
-      </div>
-      <div
-        style={{
-          background: T.surface,
-          border: `0.5px solid ${T.border}`,
-          borderRadius: "var(--border-radius-lg)",
-          padding: "12px 16px",
-          textAlign: "center",
-          marginBottom: 8,
-        }}
-      >
-        <div
+      {/* Distance — native numeric input */}
+      <SectionLabel>Distance ({distanceUnit})</SectionLabel>
+      <div style={{ position: "relative", marginBottom: "1rem" }}>
+        <input
+          ref={distInputRef}
+          type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={pendingDist}
+          onChange={(e) => {
+            // Strip non-digits and limit to 4 chars
+            const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+            setPendingDist(v);
+          }}
+          placeholder="0"
           style={{
-            fontSize: 32,
-            fontWeight: 600,
-            lineHeight: 1.1,
+            width: "100%",
+            padding: "16px 16px",
+            fontSize: 24,
+            fontWeight: 500,
+            background: T.surface,
+            border: `0.5px solid ${T.borderStrong}`,
+            borderRadius: "var(--border-radius-md)",
+            color: T.text,
+            outline: "none",
+            fontFamily: "inherit",
             fontVariantNumeric: "tabular-nums",
+            textAlign: "center",
+            // Hide spinner buttons in WebKit/Firefox
+            MozAppearance: "textfield",
+            WebkitAppearance: "none",
           }}
-        >
-          {pendingDist || "0"}
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: T.textFaint,
-            letterSpacing: 1,
-            textTransform: "uppercase",
-            marginTop: 2,
-          }}
-        >
-          {distanceUnit}
-        </div>
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 6,
-          marginBottom: "1rem",
-        }}
-      >
-        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-          <button
-            key={d}
-            onClick={() => handleNumpadDigit(d)}
-            style={numpadBtnStyle}
-          >
-            {d}
-          </button>
-        ))}
-        <button onClick={handleNumpadClear} style={numpadActionBtnStyle}>
-          Clear
-        </button>
-        <button onClick={() => handleNumpadDigit("0")} style={numpadBtnStyle}>
-          0
-        </button>
-        <button onClick={handleNumpadBackspace} style={numpadActionBtnStyle}>
-          <Delete size={16} />
-        </button>
+        />
       </div>
 
-      {/* Penalty counter */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: T.surface,
-          border: `0.5px solid ${T.border}`,
-          borderRadius: "var(--border-radius-md)",
-          padding: "10px 14px",
-          marginBottom: "1rem",
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 500 }}>Penalty strokes</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            onClick={() => setPendingPenalty(Math.max(0, pendingPenalty - 1))}
-            disabled={pendingPenalty === 0}
-            style={{
-              ...penaltyBtnStyle,
-              opacity: pendingPenalty === 0 ? 0.3 : 1,
-            }}
-          >
-            <Minus size={16} />
-          </button>
+      {/* Penalty — progressive disclosure */}
+      {showPenalty || pendingPenalty > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: T.warnSoft,
+            border: `0.5px solid ${T.warn}`,
+            borderRadius: "var(--border-radius-md)",
+            padding: "10px 14px",
+            marginBottom: "1rem",
+          }}
+        >
           <div
             style={{
-              fontSize: 18,
-              fontWeight: 600,
-              minWidth: 18,
-              textAlign: "center",
-              fontVariantNumeric: "tabular-nums",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              color: T.warnDeep,
+              fontSize: 13,
+              fontWeight: 500,
             }}
           >
-            {pendingPenalty}
+            <AlertTriangle size={14} />
+            Penalty strokes
           </div>
-          <button
-            onClick={() => setPendingPenalty(Math.min(5, pendingPenalty + 1))}
-            disabled={pendingPenalty === 5}
-            style={{
-              ...penaltyBtnStyle,
-              opacity: pendingPenalty === 5 ? 0.3 : 1,
-            }}
-          >
-            <Plus size={16} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={() => {
+                const next = Math.max(0, pendingPenalty - 1);
+                setPendingPenalty(next);
+                if (next === 0) setShowPenalty(false);
+              }}
+              style={penaltyBtnStyle}
+            >
+              <Minus size={14} />
+            </button>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 600,
+                minWidth: 16,
+                textAlign: "center",
+                color: T.warnDeep,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {pendingPenalty}
+            </div>
+            <button
+              onClick={() =>
+                setPendingPenalty(Math.min(5, pendingPenalty + 1))
+              }
+              disabled={pendingPenalty === 5}
+              style={{
+                ...penaltyBtnStyle,
+                opacity: pendingPenalty === 5 ? 0.3 : 1,
+              }}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <button
+          onClick={() => {
+            setShowPenalty(true);
+            setPendingPenalty(1);
+          }}
+          style={{
+            width: "100%",
+            padding: "10px",
+            fontSize: 13,
+            background: "transparent",
+            border: `0.5px dashed ${T.borderStrong}`,
+            borderRadius: "var(--border-radius-md)",
+            color: T.textDim,
+            cursor: "pointer",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            fontWeight: 500,
+          }}
+        >
+          <Plus size={13} />
+          Add penalty stroke
+        </button>
+      )}
 
-      {/* Add shot */}
+      {/* Add shot — primary action */}
       <button
         onClick={handleAddShot}
         disabled={!canAddShot}
         style={{
           width: "100%",
-          padding: "14px 16px",
-          fontSize: 15,
-          fontWeight: 500,
+          padding: "16px",
+          fontSize: 16,
+          fontWeight: 600,
           background: canAddShot ? T.green : T.surface,
           color: canAddShot ? T.greenInk : T.textFaint,
           border: canAddShot ? "none" : `0.5px solid ${T.border}`,
           borderRadius: "var(--border-radius-lg)",
           cursor: canAddShot ? "pointer" : "not-allowed",
-          marginBottom: "1.25rem",
+          marginBottom: "1.5rem",
+          letterSpacing: 0.3,
         }}
       >
         Add shot
@@ -566,17 +500,20 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
         )}
       </div>
       {shotsThisHole.length === 0 ? (
-        <Card style={{ padding: "1.25rem", textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 13,
-              color: T.textDim,
-              fontStyle: "italic",
-            }}
-          >
-            No shots recorded yet
-          </div>
-        </Card>
+        <div
+          style={{
+            padding: "1rem 1.25rem",
+            background: T.surface,
+            border: `0.5px dashed ${T.border}`,
+            borderRadius: "var(--border-radius-md)",
+            textAlign: "center",
+            fontSize: 13,
+            color: T.textFaint,
+            fontStyle: "italic",
+          }}
+        >
+          No shots recorded yet
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {shotsThisHole.map((shot) => (
@@ -600,6 +537,7 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
                     color: T.textFaint,
                     minWidth: 16,
                     textAlign: "center",
+                    fontVariantNumeric: "tabular-nums",
                   }}
                 >
                   #{shot.shotNum}
@@ -630,6 +568,42 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
         </div>
       )}
 
+      {/* Hole navigation footer */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginTop: "1.5rem",
+          paddingTop: "1rem",
+          borderTop: `0.5px solid ${T.border}`,
+        }}
+      >
+        <button
+          onClick={() => goToHole(currentHole - 1)}
+          disabled={currentHole === 1}
+          style={{
+            ...holeNavFooterBtnStyle,
+            opacity: currentHole === 1 ? 0.3 : 1,
+            cursor: currentHole === 1 ? "default" : "pointer",
+          }}
+        >
+          <ChevronLeft size={16} />
+          Hole {Math.max(1, currentHole - 1)}
+        </button>
+        <button
+          onClick={() => goToHole(currentHole + 1)}
+          disabled={currentHole === 18}
+          style={{
+            ...holeNavFooterBtnStyle,
+            opacity: currentHole === 18 ? 0.3 : 1,
+            cursor: currentHole === 18 ? "default" : "pointer",
+          }}
+        >
+          Hole {Math.min(18, currentHole + 1)}
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
       {/* Shot edit modal */}
       {editingShot && (
         <ShotEditModal
@@ -639,6 +613,28 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
           onCancel={() => setEditingShot(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Small helpers
+// ----------------------------------------------------------------------------
+
+function SectionLabel({ children }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        color: T.textFaint,
+        textTransform: "uppercase",
+        letterSpacing: 1,
+        fontWeight: 500,
+        marginBottom: 6,
+        paddingLeft: 4,
+      }}
+    >
+      {children}
     </div>
   );
 }
@@ -691,66 +687,49 @@ function ShotEditModal({ shot, onSave, onDelete, onCancel }) {
           Edit shot #{shot.shotNum}
         </div>
 
-        <div
-          style={{
-            fontSize: 11,
-            color: T.textFaint,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            fontWeight: 500,
-            marginBottom: 6,
-          }}
-        >
-          Lie
-        </div>
+        <SectionLabel>Lie</SectionLabel>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 5,
+            gridTemplateColumns: "repeat(6, 1fr)",
+            gap: 4,
             marginBottom: 14,
           }}
         >
           {LIES.map((l) => {
             const selected = lie === l;
+            const label = l === "Recovery" ? "Rec" : l;
             return (
               <button
                 key={l}
                 onClick={() => setLie(l)}
                 style={{
-                  padding: "10px 4px",
-                  fontSize: 13,
+                  padding: "9px 0",
+                  fontSize: 12,
                   fontWeight: 500,
                   background: selected ? T.green : T.surfaceRaised,
                   color: selected ? T.greenInk : T.text,
                   border: `0.5px solid ${selected ? T.green : T.borderStrong}`,
                   borderRadius: "var(--border-radius-md)",
                   cursor: "pointer",
+                  whiteSpace: "nowrap",
                 }}
               >
-                {l}
+                {label}
               </button>
             );
           })}
         </div>
 
-        <div
-          style={{
-            fontSize: 11,
-            color: T.textFaint,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            fontWeight: 500,
-            marginBottom: 6,
-          }}
-        >
-          Distance ({lie === "Green" ? "feet" : "yards"})
-        </div>
+        <SectionLabel>Distance ({lie === "Green" ? "feet" : "yards"})</SectionLabel>
         <input
           type="number"
-          value={dist}
-          onChange={(e) => setDist(e.target.value)}
           inputMode="numeric"
+          value={dist}
+          onChange={(e) => {
+            const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+            setDist(v);
+          }}
           style={{
             width: "100%",
             padding: "12px 14px",
@@ -763,6 +742,7 @@ function ShotEditModal({ shot, onSave, onDelete, onCancel }) {
             fontFamily: "inherit",
             fontVariantNumeric: "tabular-nums",
             marginBottom: 14,
+            textAlign: "center",
           }}
         />
 
@@ -788,13 +768,13 @@ function ShotEditModal({ shot, onSave, onDelete, onCancel }) {
                 opacity: penalty === 0 ? 0.3 : 1,
               }}
             >
-              <Minus size={16} />
+              <Minus size={14} />
             </button>
             <div
               style={{
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: 600,
-                minWidth: 18,
+                minWidth: 16,
                 textAlign: "center",
                 fontVariantNumeric: "tabular-nums",
               }}
@@ -809,7 +789,7 @@ function ShotEditModal({ shot, onSave, onDelete, onCancel }) {
                 opacity: penalty === 5 ? 0.3 : 1,
               }}
             >
-              <Plus size={16} />
+              <Plus size={14} />
             </button>
           </div>
         </div>
@@ -884,54 +864,16 @@ const topBarBtnStyle = {
   background: "transparent",
   border: "none",
   color: T.textDim,
-  fontSize: 14,
+  fontSize: 13,
   padding: "8px",
   margin: "-8px",
   cursor: "pointer",
   fontWeight: 500,
 };
 
-const holeNavBtnStyle = {
-  background: "transparent",
-  border: "none",
-  color: T.text,
-  width: 40,
-  height: 40,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 999,
-};
-
-const numpadBtnStyle = {
-  padding: "16px 0",
-  fontSize: 22,
-  fontWeight: 500,
-  background: T.surface,
-  color: T.text,
-  border: `0.5px solid ${T.border}`,
-  borderRadius: "var(--border-radius-md)",
-  cursor: "pointer",
-  fontVariantNumeric: "tabular-nums",
-};
-
-const numpadActionBtnStyle = {
-  padding: "16px 0",
-  fontSize: 13,
-  fontWeight: 500,
-  background: T.surface,
-  color: T.textDim,
-  border: `0.5px solid ${T.border}`,
-  borderRadius: "var(--border-radius-md)",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
 const penaltyBtnStyle = {
-  width: 32,
-  height: 32,
+  width: 28,
+  height: 28,
   borderRadius: "50%",
   background: T.surfaceRaised,
   border: `0.5px solid ${T.border}`,
@@ -940,4 +882,19 @@ const penaltyBtnStyle = {
   alignItems: "center",
   justifyContent: "center",
   cursor: "pointer",
+};
+
+const holeNavFooterBtnStyle = {
+  flex: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 4,
+  padding: "10px 12px",
+  fontSize: 13,
+  fontWeight: 500,
+  background: T.surface,
+  color: T.text,
+  border: `0.5px solid ${T.borderStrong}`,
+  borderRadius: "var(--border-radius-md)",
 };
