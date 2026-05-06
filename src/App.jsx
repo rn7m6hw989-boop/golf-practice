@@ -12,6 +12,7 @@ import { SessionDetailView } from "./views/SessionDetailView.jsx";
 import { SummaryView } from "./views/SummaryView.jsx";
 import { RoundSetupView } from "./views/RoundSetupView.jsx";
 import { RoundView } from "./views/RoundView.jsx";
+import { RoundSummaryView } from "./views/RoundSummaryView.jsx";
 import { SessionView } from "./sessions/SessionView.jsx";
 import { BottomNav } from "./components/BottomNav.jsx";
 import { EndRoundModal } from "./components/EndRoundModal.jsx";
@@ -166,8 +167,18 @@ export default function App() {
   };
 
   const handleEndRound = async () => {
-    await storage.completeActiveRound();
+    const completed = await storage.completeActiveRound();
     await refreshAll();
+    if (completed) {
+      setScreen({ name: "roundSummary", round: completed });
+    } else {
+      // No active round to complete — fall back to Rounds tab.
+      setScreen({ name: "tab" });
+      setCurrentTab("rounds");
+    }
+  };
+
+  const handleRoundSummaryDone = () => {
     setScreen({ name: "tab" });
     setCurrentTab("rounds");
   };
@@ -288,6 +299,10 @@ export default function App() {
         onExit={handleExitRound}
         onRoundChanged={refreshAll}
       />
+    );
+  } else if (screen.name === "roundSummary") {
+    content = (
+      <RoundSummaryView round={screen.round} onDone={handleRoundSummaryDone} />
     );
   } else {
     if (currentTab === "goals") {
