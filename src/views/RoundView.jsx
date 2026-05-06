@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { T } from "../theme.js";
 import { Card } from "../components/Card.jsx";
+import { HoleFinishModal } from "../components/HoleFinishModal.jsx";
 import { storage } from "../storage.js";
 
 const LIES = ["Tee", "Fairway", "Rough", "Sand", "Recovery", "Green"];
@@ -36,6 +37,7 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
   const [showPenalty, setShowPenalty] = useState(false);
   const [showConfirmEnd, setShowConfirmEnd] = useState(false);
   const [editingShot, setEditingShot] = useState(null);
+  const [showHoleFinish, setShowHoleFinish] = useState(false);
 
   const distInputRef = useRef(null);
 
@@ -52,9 +54,20 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
     .filter((s) => s.hole === currentHole)
     .sort((a, b) => a.shotNum - b.shotNum);
 
+  // Hole completion: a hole is "complete" if it has formal hole data (par +
+  // score) recorded via the hole-finish modal. `r.holes` is keyed by hole
+  // number.
+  const holeData = r.holes && r.holes[currentHole];
+  const isHoleComplete = !!(holeData && holeData.score);
+
   const scoreSoFar =
     shotsThisHole.length +
     shotsThisHole.reduce((acc, s) => acc + (s.penalty || 0), 0);
+
+  // The score to display in the status line. If the hole is complete, show
+  // its formal score (no "so far"). Otherwise show the inferred working
+  // score from shots+penalties (with "so far" suffix).
+  const displayScore = isHoleComplete ? holeData.score : scoreSoFar;
 
   const persistRound = async (next) => {
     setR(next);
@@ -110,6 +123,24 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
 
   const handleEditShot = (shot) => {
     setEditingShot(shot);
+  };
+
+  const handleSaveHole = async (data) => {
+    const wasComplete = isHoleComplete;
+    const next = {
+      ...r,
+      holes: {
+        ...(r.holes || {}),
+        [currentHole]: data,
+      },
+    };
+    await persistRound(next);
+    setShowHoleFinish(false);
+    // First-time finish: advance to next hole. Editing existing data: stay
+    // put so the user can verify the change.
+    if (!wasComplete && currentHole < 18) {
+      goToHole(currentHole + 1);
+    }
   };
 
   const handleSaveEditedShot = async (updated) => {
@@ -268,7 +299,9 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
             }}
           >
             Par {par || "—"}
-            {scoreSoFar > 0 && ` · ${scoreSoFar} so far`}
+            {isHoleComplete
+              ? ` · ${displayScore}`
+              : displayScore > 0 && ` · ${displayScore} so far`}
           </span>
         </div>
       </div>
@@ -568,12 +601,31 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
         </div>
       )}
 
+      {/* Finish hole / Edit hole — primary structural action */}
+      <button
+        onClick={() => setShowHoleFinish(true)}
+        style={{
+          width: "100%",
+          padding: "14px",
+          fontSize: 15,
+          fontWeight: 500,
+          background: isHoleComplete ? T.surface : T.green,
+          color: isHoleComplete ? T.text : T.greenInk,
+          border: isHoleComplete ? `0.5px solid ${T.borderStrong}` : "none",
+          borderRadius: "var(--border-radius-lg)",
+          cursor: "pointer",
+          marginTop: "1.5rem",
+        }}
+      >
+        {isHoleComplete ? "Edit hole" : "Finish hole"}
+      </button>
+
       {/* Hole navigation footer */}
       <div
         style={{
           display: "flex",
           gap: 8,
-          marginTop: "1.5rem",
+          marginTop: "0.75rem",
           paddingTop: "1rem",
           borderTop: `0.5px solid ${T.border}`,
         }}
@@ -611,6 +663,20 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
           onSave={handleSaveEditedShot}
           onDelete={handleDeleteEditedShot}
           onCancel={() => setEditingShot(null)}
+        />
+      )}
+
+      {/* Hole finish / edit modal */}
+      {showHoleFinish && (
+        <HoleFinishModal
+          holeNumber={currentHole}
+          initialPar={holeData?.par || par || 4}
+          initialScore={holeData?.score || scoreSoFar || 0}
+          initialMistakes={holeData?.mistakes || {}}
+          initialNotes={holeData?.notes || ""}
+          isEdit={isHoleComplete}
+          onSave={handleSaveHole}
+          onCancel={() => setShowHoleFinish(false)}
         />
       )}
     </div>
