@@ -25,6 +25,7 @@ import {
 import { T } from "../theme.js";
 import { Card } from "../components/Card.jsx";
 import { HoleFinishModal } from "../components/HoleFinishModal.jsx";
+import { HoleJumpModal } from "../components/HoleJumpModal.jsx";
 import { storage } from "../storage.js";
 
 const LIES = ["Tee", "Fairway", "Rough", "Sand", "Recovery", "Green"];
@@ -38,6 +39,7 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
   const [showConfirmEnd, setShowConfirmEnd] = useState(false);
   const [editingShot, setEditingShot] = useState(null);
   const [showHoleFinish, setShowHoleFinish] = useState(false);
+  const [showHoleJump, setShowHoleJump] = useState(false);
 
   const distInputRef = useRef(null);
 
@@ -251,8 +253,15 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
         </Card>
       )}
 
-      {/* Compact info bar — course + hole status in two tight lines */}
-      <div style={{ marginBottom: "1.25rem", paddingLeft: 2 }}>
+      {/* Compact info bar — tappable to open hole-jump modal */}
+      <div
+        onClick={() => setShowHoleJump(true)}
+        style={{
+          marginBottom: "1.25rem",
+          paddingLeft: 2,
+          cursor: "pointer",
+        }}
+      >
         <div
           style={{
             fontSize: 12,
@@ -302,6 +311,16 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
             {isHoleComplete
               ? ` · ${displayScore}`
               : displayScore > 0 && ` · ${displayScore} so far`}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: T.green,
+              marginLeft: "auto",
+              fontWeight: 500,
+            }}
+          >
+            Jump
           </span>
         </div>
       </div>
@@ -677,6 +696,16 @@ export function RoundView({ round, onEndRound, onExit, onRoundChanged }) {
           isEdit={isHoleComplete}
           onSave={handleSaveHole}
           onCancel={() => setShowHoleFinish(false)}
+        />
+      )}
+
+      {/* Hole jump modal */}
+      {showHoleJump && (
+        <HoleJumpModal
+          round={r}
+          currentHole={currentHole}
+          onSelectHole={(h) => goToHole(h)}
+          onCancel={() => setShowHoleJump(false)}
         />
       )}
     </div>

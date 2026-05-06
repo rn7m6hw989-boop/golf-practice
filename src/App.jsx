@@ -13,6 +13,7 @@ import { SummaryView } from "./views/SummaryView.jsx";
 import { RoundSetupView } from "./views/RoundSetupView.jsx";
 import { RoundView } from "./views/RoundView.jsx";
 import { RoundSummaryView } from "./views/RoundSummaryView.jsx";
+import { RoundDetailView } from "./views/RoundDetailView.jsx";
 import { SessionView } from "./sessions/SessionView.jsx";
 import { BottomNav } from "./components/BottomNav.jsx";
 import { EndRoundModal } from "./components/EndRoundModal.jsx";
@@ -184,9 +185,17 @@ export default function App() {
   };
 
   const handleOpenRound = (roundId) => {
-    // Phase B1: round detail view doesn't exist yet. For now, opening a past
-    // round is a no-op. (Will be wired up in B5.)
-    console.log("Open round (not yet implemented):", roundId);
+    const found = rounds.find((r) => r.id === roundId);
+    if (found) {
+      setScreen({ name: "roundDetail", round: found });
+    }
+  };
+
+  const handleDeleteRound = async (roundId) => {
+    await storage.deleteRound(roundId);
+    await refreshAll();
+    setScreen({ name: "tab" });
+    setCurrentTab("rounds");
   };
 
   // ==========================================================================
@@ -303,6 +312,20 @@ export default function App() {
   } else if (screen.name === "roundSummary") {
     content = (
       <RoundSummaryView round={screen.round} onDone={handleRoundSummaryDone} />
+    );
+  } else if (screen.name === "roundDetail") {
+    // Find the latest version of the round (in case it was edited)
+    const round = rounds.find((r) => r.id === screen.round.id) || screen.round;
+    content = (
+      <RoundDetailView
+        round={round}
+        onBack={() => {
+          setScreen({ name: "tab" });
+          setCurrentTab("rounds");
+        }}
+        onDelete={handleDeleteRound}
+        onChanged={refreshAll}
+      />
     );
   } else {
     if (currentTab === "goals") {

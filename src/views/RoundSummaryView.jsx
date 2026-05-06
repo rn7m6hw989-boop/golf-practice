@@ -15,6 +15,7 @@ import { T } from "../theme.js";
 import { Card } from "../components/Card.jsx";
 import { PageTitle } from "../components/PageTitle.jsx";
 import { SectionLabel } from "../components/SectionLabel.jsx";
+import { HoleGrid } from "../components/HoleGrid.jsx";
 
 const TIGER_5 = [
   { key: "double", label: "Doubles or worse" },
@@ -79,18 +80,6 @@ export function RoundSummaryView({ round, onDone }) {
         year: "numeric",
       })
     : "";
-
-  // Per-hole grid data
-  const holeRows = [];
-  for (let h = 1; h <= 18; h++) {
-    const data = round.holes && round.holes[h];
-    holeRows.push({
-      hole: h,
-      par: (data && data.par) || (round.pars && round.pars[h - 1]) || null,
-      score: data && data.score ? data.score : null,
-      mistakes: (data && data.mistakes) || {},
-    });
-  }
 
   return (
     <div style={{ padding: "1rem 0 9rem" }}>
@@ -258,34 +247,7 @@ export function RoundSummaryView({ round, onDone }) {
       {/* Per-hole breakdown */}
       <SectionLabel>Hole by hole</SectionLabel>
       <Card style={{ padding: "0.75rem", marginBottom: "1rem" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(6, 1fr)",
-            gap: 4,
-          }}
-        >
-          {holeRows.map((row) => (
-            <HoleCell key={row.hole} {...row} />
-          ))}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: `0.5px solid ${T.border}`,
-            fontSize: 11,
-            color: T.textFaint,
-            flexWrap: "wrap",
-          }}
-        >
-          <Legend color={T.green} label="Under par" />
-          <Legend color={T.text} label="Par" />
-          <Legend color={T.warn} label="Bogey" />
-          <Legend color={T.loss} label="Double+" />
-        </div>
+        <HoleGrid holes={round.holes} pars={round.pars} />
       </Card>
 
       {/* Done button (fixed bottom, like drill summary) */}
@@ -317,95 +279,6 @@ export function RoundSummaryView({ round, onDone }) {
           Done
         </button>
       </div>
-    </div>
-  );
-}
-
-function HoleCell({ hole, par, score, mistakes }) {
-  const hasMistakes =
-    mistakes &&
-    Object.values(mistakes).some((v) => v);
-  let color = T.textFaint;
-  if (score !== null && par) {
-    const diff = score - par;
-    color =
-      diff < 0 ? T.green : diff === 0 ? T.text : diff === 1 ? T.warn : T.loss;
-  }
-  return (
-    <div
-      style={{
-        background: T.surfaceRaised,
-        border: `0.5px solid ${T.border}`,
-        borderRadius: "var(--border-radius-md)",
-        padding: "8px 4px 10px",
-        textAlign: "center",
-        position: "relative",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          color: T.textFaint,
-          fontWeight: 500,
-          marginBottom: 2,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {hole}
-      </div>
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: 600,
-          color,
-          lineHeight: 1.1,
-          fontVariantNumeric: "tabular-nums",
-          minHeight: 20,
-        }}
-      >
-        {score !== null ? score : "—"}
-      </div>
-      {par && (
-        <div
-          style={{
-            fontSize: 9,
-            color: T.textFaint,
-            marginTop: 2,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          P{par}
-        </div>
-      )}
-      {hasMistakes && (
-        <div
-          style={{
-            position: "absolute",
-            top: 3,
-            right: 4,
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: T.warn,
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function Legend({ color, label }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      <div
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: color,
-        }}
-      />
-      <span>{label}</span>
     </div>
   );
 }
