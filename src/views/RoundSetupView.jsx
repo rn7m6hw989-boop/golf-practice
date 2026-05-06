@@ -112,10 +112,10 @@ export function RoundSetupView({ onCancel, onStart }) {
       <div
         style={{
           position: "fixed",
-          bottom: 0,
+          bottom: "calc(64px + env(safe-area-inset-bottom))",
           left: 0,
           right: 0,
-          padding: "12px 16px calc(14px + env(safe-area-inset-bottom))",
+          padding: "12px 16px",
           background: T.surface,
           borderTop: `0.5px solid ${T.border}`,
         }}

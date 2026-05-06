@@ -32,6 +32,11 @@ export default function App() {
   // held here and the modal is shown.
   const [pendingDrillStart, setPendingDrillStart] = useState(null);
 
+  // When the user attempts to navigate away from a mid-drill session, the
+  // requested destination is held here and a confirmation is shown. This
+  // protects against accidentally losing in-progress drill data.
+  const [pendingNavAwayFromDrill, setPendingNavAwayFromDrill] = useState(null);
+
   useEffect(() => {
     (async () => {
       const [allSessions, allRounds, active] = await Promise.all([
@@ -178,8 +183,28 @@ export default function App() {
   // ==========================================================================
 
   const handleChangeTab = (tabId) => {
+    // If the user is in the middle of a drill session, prompt before
+    // navigating away (cancels the drill). Round screens don't need this
+    // gate because the round persists naturally.
+    if (screen.name === "session" && tabId !== currentTab) {
+      setPendingNavAwayFromDrill(tabId);
+      return;
+    }
     setCurrentTab(tabId);
     setScreen({ name: "tab" });
+  };
+
+  const handleConfirmNavAwayFromDrill = () => {
+    const dest = pendingNavAwayFromDrill;
+    setPendingNavAwayFromDrill(null);
+    if (dest) {
+      setCurrentTab(dest);
+      setScreen({ name: "tab" });
+    }
+  };
+
+  const handleCancelNavAwayFromDrill = () => {
+    setPendingNavAwayFromDrill(null);
   };
 
   if (loading) {
@@ -199,13 +224,9 @@ export default function App() {
     );
   }
 
-  // Routes that aren't simple tabs override the bottom nav.
+  // Routes always render the bottom nav. Tab-switching during an active
+  // drill is gated by handleChangeTab.
   let content;
-  const showNav =
-    screen.name === "tab" ||
-    screen.name === "drillDetail" ||
-    screen.name === "sessionDetail" ||
-    screen.name === "benchmarks";
 
   if (screen.name === "session") {
     content = (
@@ -265,6 +286,7 @@ export default function App() {
         round={activeRound || screen.round}
         onEndRound={handleEndRound}
         onExit={handleExitRound}
+        onRoundChanged={refreshAll}
       />
     );
   } else {
@@ -300,12 +322,12 @@ export default function App() {
         background: T.bg,
         color: T.text,
         paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: showNav ? "calc(64px + env(safe-area-inset-bottom))" : 0,
+        paddingBottom: "calc(64px + env(safe-area-inset-bottom))",
         fontFamily: "var(--font-sans)",
       }}
     >
       <div style={{ padding: "0 16px" }}>{content}</div>
-      {showNav && <BottomNav currentTab={currentTab} onChangeTab={handleChangeTab} />}
+      <BottomNav currentTab={currentTab} onChangeTab={handleChangeTab} />
       {pendingDrillStart && (
         <EndRoundModal
           activeRound={activeRound}
@@ -313,6 +335,97 @@ export default function App() {
           onCancel={handleCancelPendingDrill}
         />
       )}
+      {pendingNavAwayFromDrill && (
+        <CancelDrillConfirm
+          onConfirm={handleConfirmNavAwayFromDrill}
+          onCancel={handleCancelNavAwayFromDrill}
+        />
+      )}
+    </div>
+  );
+}
+
+// Small inline modal: shown when the user navigates away from a drill in
+// progress. Confirms the drill should be cancelled.
+function CancelDrillConfirm({ onConfirm, onCancel }) {
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: T.surface,
+          border: `0.5px solid ${T.borderStrong}`,
+          borderRadius: "var(--border-radius-lg)",
+          padding: "1.25rem",
+          maxWidth: 380,
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 16,
+            fontWeight: 500,
+            marginBottom: 8,
+            letterSpacing: -0.2,
+          }}
+        >
+          Leave the drill?
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: T.textDim,
+            lineHeight: 1.5,
+            marginBottom: 18,
+          }}
+        >
+          You have a drill in progress. Leaving now will discard it.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: "13px 16px",
+              fontSize: 14,
+              fontWeight: 500,
+              background: T.lossSoft,
+              color: T.loss,
+              border: "none",
+              borderRadius: "var(--border-radius-md)",
+              cursor: "pointer",
+            }}
+          >
+            Leave and discard
+          </button>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: "13px 16px",
+              fontSize: 14,
+              fontWeight: 500,
+              background: "transparent",
+              color: T.text,
+              border: `0.5px solid ${T.borderStrong}`,
+              borderRadius: "var(--border-radius-md)",
+              cursor: "pointer",
+            }}
+          >
+            Stay in drill
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
